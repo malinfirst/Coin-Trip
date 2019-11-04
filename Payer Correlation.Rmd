@@ -1,0 +1,108 @@
+---
+title: '[CoinTrip] Payer Correlation'
+author: "Lin Ma"
+date: '2019-10-30'
+output:
+  html_notebook: 
+    toc: yes
+---
+
+### Introduction
+Payer Correlation Analysis is aimed to find out the correlation between different gameplay features and if a player will become a customer/payer. 
+
+
+### Load Packages
+```{r}
+library(caret)
+library(e1071)
+library(ROCR)
+library(ggplot2)
+library(corrplot)
+library(mice)
+library(randomForest)
+library(dplyr)
+```
+
+
+### Data Import and Cleaning
+**Basic Introduction of our dataset**
+
+Install date: Last 2 weeks
+
+Event Date: Last 2 weeks
+
+1. InGame Features: average/median levels, sessions, tickets, spins, puzzles, lifetree  
+
+2. Social: Friends distribution  
+
+3. Normalization of InGame Features: by active day or by session  
+
+
+```{r}
+payer_correlation <- read.csv('Payer Correlation Complete v3.csv',header = TRUE)
+pc <- payer_correlation[,-c(1,3)]
+pc[is.na(pc)] <- 0
+md.pattern(pc)
+```
+
+### Remove redundant features
+
+We have to remove highly correlated variables so that we can prepare clean data for the later regression modeling.
+
+```{r}
+set.seed(234)
+correlationMatrix <- cor(pc[,8:18])
+highlycorrelated<-findCorrelation(correlationMatrix,cutoff = 0.75)
+print(highlycorrelated)
+
+#Correlation Plot: Detect if any high correlation exists
+corrplot(correlationMatrix,method = "number",type="upper",tl.col = "black",tl.srt = 45,order = "hclust")
+```
+
+**Conclusion**
+
+Since the correlation between avg.tickets.per.session and avg.levels.per.session is far over 0.75 obviously, we will keep avg.tickets.per.session only in this case. Because avg.tickets.per.session can better help us understand the detail of player's activity.
+
+
+After we remove the avg.tickets, we need to double check if there are other highly correlated features in our model, and we have verified there is no other variables with correlation over 75%.
+```{r}
+pc <- pc[,-9]
+corrplot(correlationMatrix,method = "number",type="upper",tl.col = "black",tl.srt = 45,order = "hclust")
+
+set.seed(234)
+findCorrelation(cor(pc[,8:17]),cutoff = 0.75)
+```
+
+
+## Split Dataset
+
+```{r}
+set.seed(123)
+trainIndex <- createDataPartition(pc$is_customer, p=0.7, list = FALSE)
+train <- pc[trainIndex,]
+test <- pc[-trainIndex,]
+```
+
+
+## Logistic Regression
+
+```{r}
+set.seed(1224)
+control<-trainControl(method = "repeatedcv",number=10,repeats = 3)
+model_glm<-train(is_customer~.,data = train ,method='glm',preProcess=c('scale','center'),family="binomial",trControl=control)
+summary(model_glm)
+predictions<-predict(model_glm,newdata = test,type="raw")
+confusionMatrix(predictions,test$is_customer)
+```
+
+
+- From the result of the logistic regression model, it's not hard to find out even though the accuracy and sensitivity of the model is pretty high, the model overall is performing very bad since only 1% of the payers is correctly predicted as payers.  
+
+- The reason could come from the sample size, since we only have around 600 payers records in total compared with 30000 total players.  
+
+- However, we do find out some features of high significance in this model, which we could do an exploratory analysis later. For example, 'if_fb','have_friend','if_free_chest','if_life_tree','avg.daily.spin.per.active.day','avg.sessions.per.active.day'
+
+
+
+
+
