@@ -1,0 +1,74 @@
+---
+title: "Retain Correlation"
+output: 
+  html_notebook:
+    toc: yes
+author: Lin Ma
+date: 2019-11-03
+---
+
+### Data Import and Cleaning
+
+
+```{r}
+retain_correlation <- read.csv("Retain Correlation Complete v3.csv", header = TRUE) 
+rc <- retain_correlation[,-1]
+summary(rc)
+rc[is.na(rc)] <- 0
+md.pattern(rc)
+```
+
+
+```{r}
+#Remove redundant features
+set.seed(1652)
+correlationMatrix <- cor(rc[,9:20])
+print(correlationMatrix)
+highlycorrelated<-findCorrelation(correlationMatrix,cutoff = 0.75)
+print(highlycorrelated)
+
+#Correlation
+corrplot(correlationMatrix,method = "number",type="upper",tl.col = "black",tl.srt = 45,order = "hclust",addCoefasPercent = TRUE, number.cex = .7)
+```
+
+```{r}
+rc <- rc[,-c(10,17)]
+corrplot(cor(rc[,9:18]),method = "number",type="upper",tl.col = "black",tl.srt = 45,order = "hclust", addCoefasPercent = TRUE, number.cex = .7)
+
+set.seed(234)
+findCorrelation(cor(rc[,9:18]),cutoff = 0.75)
+```
+
+
+### Split Dataset
+
+```{r}
+set.seed(2417)
+trainIndex1 <- createDataPartition(rc$if_retain, p=0.7, list = FALSE)
+train1 <- rc[trainIndex1,]
+test1 <- rc[-trainIndex1,]
+```
+
+
+### Logistic Regression
+
+```{r}
+set.seed(1224)
+control<-trainControl(method = "repeatedcv",number=10,repeats = 3)
+model_glm1<-train(if_retain~.,data = train1 ,method='glm',preProcess=c('scale','center'),family="binomial",trControl=control)
+summary(model_glm1)
+predictions1<-predict(model_glm1,newdata = test1,type="raw")
+confusionMatrix(predictions1,test1$if_retain)
+```
+
+
+### Export the Result
+
+```{r}
+test1$if_retain_predict <- predictions1
+test1$userID <- retain_correlation[-trainIndex1,]$userID
+write.csv(test1,file = "reatin player prediction v3.csv",row.names = FALSE)
+```
+
+
+
